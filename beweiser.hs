@@ -12,7 +12,6 @@ import Codec.Binary.UTF8.String
 import Data.Char
 
 import System.Console.Readline
-import Control.Exception
 import System.Exit
 
 import Text.ParserCombinators.Parsec hiding (Line)
@@ -20,7 +19,7 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import qualified Text.ParserCombinators.Parsec.Language as Language
 import Text.ParserCombinators.Parsec.Expr
 
-manual =  "Beweiser für die Aussagenlogik im CR-Kalkül\n"
+manual =  "\nBeweiser für die Aussagenlogik im CR-Kalkül\n"
         ++"===========================================\n\n"
         ++"Befehle:\n"
         ++"  ls       - listet den Annahmenspeicher\n"
@@ -31,21 +30,18 @@ manual =  "Beweiser für die Aussagenlogik im CR-Kalkül\n"
         ++"  help     - zeigt diese Hilfe\n"
         ++"  exit     - beendet das Programm\n\n"
         ++"Syntax:\n"
-        ++"  Das Programm unterstützt die Verwendung von Unicodezeichen. Alternativ\n"
-        ++"  gibt es für jedes Zeichen eine ASCII-Alternative.\n"
-        ++"  Die Eingabe von Unicode-Zeichen ist von der Benutzeroberfläche ihres\n"
-        ++"  Betriebssytemes abhängig. Unter Gnome drücken sie z.B. Strg+Shift+u .\n\n"
+        ++"  Das Programm unterstützt die Verwendung von Unicodezeichen. Jedoch\n"
+        ++"  gibt es für jedes Zeichen auch eine ASCII-Alternative.\n"
         ++"                (ASCII)  (Unicode)\n"
         ++"  Negation:      !       ¬ (u+\n"
         ++"  Conjunction:   ^       ∧ (u+2227)\n"
         ++"  Disjunction:   v       ∨ (u+2228)\n"
         ++"  Conditional:   ->      ⊃ (u+2283)\n"
         ++"  Biconditional: <->     ≣ (u+2263)\n\n"
-        ++"  Die Operatoren sind nach Bindungsstärke gegliedert. Die Verwendung von\n"
+        ++"  Die Operatoren sind nach Bindungsstärke geordnet. Die Verwendung von\n"
         ++"  Klammern ist zulässig. Die Operatoren sind darüber hinaus nicht assoziativ.\n\n"
         ++"Sonstiges:\n"
-        ++"  Sollte das Programm Fehler enthalten -> bitte eine Mail an lpeterse@uos.de.\n"
-        ++"  Dies gilt natürlich auch für sonstige Anregungen oder Verbesserungsvorschläge.\n"
+        ++"  Fragen und Verbesserungsvorschläge bitte an info@lars-petersen.net.\n"
 
 lexer = P.makeTokenParser (Language.haskellStyle { P.reservedOpNames = ["¬", "!", "∧", "^", "∨", "v", "⊃", "->", "≣", "<->"] })
 whiteSpace = P.whiteSpace lexer
@@ -65,7 +61,7 @@ expr    = buildExpressionParser table term
 
 term    = parens expr 
           <|> propConst 
-          <?> "expression or propositional Constant"
+          <?> "expression or propositional constant"
 
 table   = [ [prefix "¬" Neg, prefix "!" Neg]
           , [binary "∧" And, binary "^" And, binary "∨" Or, binary "v" Or]
@@ -97,7 +93,7 @@ readEvalPrintLoop ps = do
                                            Right x  -> readEvalPrintLoop (ps `union` [A x])
                         _             -> case runLex expr (decodeString line) of
                                            Left err -> do{ putStr "parse error at "; print err}
-                                           Right x  -> handle (const $ readEvalPrintLoop ps) (proove x ps)
+                                           Right x  -> catch (proove x ps) (const $ readEvalPrintLoop ps) 
                        readEvalPrintLoop ps
 
 demo = do
@@ -121,29 +117,30 @@ demo = do
 
 --einige String-Formatierungsfunktionen
 putUtf8Ln = putStrLn . encodeString
-underline x = x ++ ('\n':(replicate (length x) '͞'))
+underline x = x ++ ('\n':(replicate (length x) '-'))
 
 --Beweisfunktionen: nehme eine Proposition, eine Menge an Annahmen und drucken direkt auf den Bildschirm
-proove     :: Proposition -> [Proof] -> IO ()
 proove p as = do putUtf8Ln $ underline ("Proof of "++(init $ tail $ show (map proof2Proposition as))++" ⊦ "++(show p)++":")
-                 putUtf8Ln $ unlines $ map show $  proof2Lines $ idsProove' p as
+                 proove'' 7 p as
 
-prooveWhileShowingDepth = proove' 1
+proove'        :: Proposition -> [Proof] -> IO ()
+proove' p as    = putUtf8Ln $ unlines $ map show $  proof2Lines $ idsProove' p as
 
-proove' n p as | (idsProove n p as ) == Unprovable = do
-                    putStrLn ("Depth: "++(show n)++" -> Not provable")
-                    proove' (n+1) p as
-               | otherwise        = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProove n p as
+proove'' 0 p as = putUtf8Ln "Beweis nicht möglich. Aus Sicherheitsgründen ist die Beweistiefe auf diesem System begrenzt.\n"
+proove'' n p as | (idsProove n p as ) == Unprovable = do
+                    proove'' (n-1) p as
+                | otherwise        = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProove n p as
+
 
 ----------------------------------------------------------------------------------------------------------
 
 -- Datentyp, mit dem ein Ausdruck der Aussagenlogik dargestellt werden kann.
-data Proposition = Const { constant:: String }                -- propositionale Konstante
+data Proposition = Const { constant:: String }                                  -- propositionale Konstante
                  | And   { fstConj :: Proposition, sndConj :: Proposition }
                  | Or    { fstDisj :: Proposition, sndDisj :: Proposition } 
                  | If    { premise :: Proposition, consequence :: Proposition } -- Implikation
-                 | Iff   { first   :: Proposition, second :: Proposition }-- logische Äquivalenz
-                 | Neg   { neg     :: Proposition }             -- Negation
+                 | Iff   { first   :: Proposition, second :: Proposition }      -- logische Äquivalenz
+                 | Neg   { neg     :: Proposition }                             -- Negation
                    deriving (Eq) -- Vergleich bezieht sich auf Syntax
 
 -- Funktionen zum Testen auf die verschiedenen Konstruktoren
@@ -229,7 +226,7 @@ a          ->> f             = f a
 -- Liste mit Transformationsfunktionen (siehe unten), die an jedem Knoten des
 -- iterativen Baumes evaluiert werden. Eine Transformationsfunktion liefert einen Beweis
 -- zurück (evtl. Unprovable) den es mithilfe des ihr übergebenen Proovers ermittelt hat.
-transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tryOrInt, tryOrElim1, tryOrElim2, tryAndInt, tryAndElim, tryDNInt, tryDNElim, tryRAA]
+transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tryFoobar, tryOrInt, tryOrElim1, tryOrElim2, tryAndInt, tryAndElim, tryRAA] 
 
 -- Implementierung einer iterativen Tiefensuche.
 -- Die Funktion ruft alle Transformationsfunktionen mit dem zu beweisenden Ausdruck auf.
@@ -283,8 +280,13 @@ tryIffInt q       as pr     = pr q as'
 tryIffElim                 :: Transformation
 tryIffElim q      as pr     = pr q as'
                               where
-                                ls = filter (isIff.proof2Proposition) as
+                                ls  = filter (isIff.proof2Proposition) as
                                 as' = as `union` (map IffElim1 ls) `union` (map IffElim2 ls)
+
+tryFoobar (Iff p q) as pr   = pr (If p q) as ->> \x->
+                              pr (If q p) as ->> \y-> IffInt x y
+tryFoobar _         _  _    = Unprovable
+                              
                                   
 -- Teste, ob die Aussage durch OrIntroduction zustande gekommen sein kann.
 tryOrInt                   :: Transformation
@@ -319,15 +321,6 @@ tryAndElim                 :: Transformation
 tryAndElim  p       as pr   = pr p $ as `union` (map AndElim1 ls) `union` (map AndElim2 ls)
                               where
                                 ls = filter (\x->isAnd (proof2Proposition x)) as
-
--- Teste, ob DoubleNegation vorliegt. Wenn, dann führe DefinitionalInterchange aus.
-tryDNInt                    :: Transformation
-tryDNInt (Neg (Neg p)) as pr = pr p as  ->> DNInt 
-tryDNInt _        _  _       = Unprovable 
-
--- Mache DI mit DN.
-tryDNElim                   :: Transformation
-tryDNElim p         as pr    = pr (Neg (Neg p)) as ->> DNElim
 
 -- Teste, ob Aussage durch ReductioAdAdsurdum zustande gekommen sein kann.
 -- Hierbei wird zunächst das SoA um die Annahme der negierten Aussage erweitert.
@@ -377,6 +370,9 @@ lastStep (Unprovable) = ""
 lastStep (A _)        = "A"
 lastStep (IfInt  _ _) = "⊃-Int" 
 lastStep (IfElim _ _) = "⊃-Elim" 
+lastStep (IffInt  _ _)= "≣-Int" 
+lastStep (IffElim1 _) = "≣-Elim" 
+lastStep (IffElim2 _) = "≣-Elim" 
 lastStep (AndInt _ _) = "∧-Int" 
 lastStep (AndElim1 _) = "∧-Elim" 
 lastStep (AndElim2 _) = "∧-Elim" 
@@ -384,8 +380,6 @@ lastStep (OrInt1 _ _) = "∨-Int"
 lastStep (OrInt2 _ _) = "∨-Int" 
 lastStep (OrElim1 _ _)= "∨-Elim" 
 lastStep (OrElim2 _ _)= "∨-Elim" 
-lastStep (DNInt _)    = "DI"
-lastStep (DNElim _)   = "DI"
 lastStep (RAA _ _ _)  = "RAA"
 
 -- bildet einen baumartigen `Proof` auf eine Liste von `Line` ab.
@@ -417,6 +411,23 @@ lineifyProof n p@(IfElim a b)   = as++bs++[Line set (n+las+lbs) p [(n+las-1), (n
                                     las = length as
                                     lbs = length bs
                                     set = soa (last as) `union` soa (last bs)
+lineifyProof n p@(IffInt a b)   = as++bs++[Line set (n+las+lbs) p [(n+las+lbs-1), (n+las-1)]] 
+                                  where
+                                    as  = lineifyProof n       a
+                                    bs  = lineifyProof (n+las) b
+                                    las = length as
+                                    lbs = length bs
+                                    set = soa (last as) `union` soa (last bs) 
+lineifyProof n p@(IffElim1 a)   = as++[Line set (n+las) p [(n+las-1)]]
+                                  where
+                                    as  = lineifyProof n       a
+                                    las = length as
+                                    set = soa (last as)
+lineifyProof n p@(IffElim2 a)   = as++[Line set (n+las) p [(n+las-1)]]
+                                  where
+                                    as  = lineifyProof n       a
+                                    las = length as
+                                    set = soa (last as)
 lineifyProof n p@(AndInt   a b) = as++bs++[Line set (n+las+lbs) p [(n+las-1), (n+las+lbs-1)]] 
                                   where
                                     as  = lineifyProof n       a
@@ -458,16 +469,6 @@ lineifyProof n p@(OrElim2 a b)  = as++bs++[Line set (n+las+lbs) p [(n+las-1), (n
                                     las = length as
                                     lbs = length bs
                                     set = soa (last as) `union` soa (last bs)
-lineifyProof n p@(DNInt a)      = as++[Line set (n+las) p [(n+las-1)]]
-                                  where
-                                    as = lineifyProof  n       a
-                                    las = length as
-                                    set = soa (last as)
-lineifyProof n p@(DNElim a)     = as++[Line set (n+las) p [(n+las-1)]]
-                                  where
-                                    as = lineifyProof  n       a
-                                    las = length as
-                                    set = soa (last as)
 lineifyProof n p@(RAA a b c)    = as++bs++cs++[Line set (n+las+lbs+lcs) p [(n+las-1), (n+las+lbs-1), (n+las+lbs+lcs-1)]]
                                   where
                                     as = lineifyProof  n           a

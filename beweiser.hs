@@ -1,9 +1,3 @@
--------------------------------------------------------------------------------
--- "THE BEER-WARE LICENSE" (Revision 42):
--- <lpeterse@uos.de> wrote this file. As long as you retain this notice you
--- can do whatever you want with this stuff. If we meet some day, and you think
--- this stuff is worth it, you can buy me a beer in return Lars Petersen
--------------------------------------------------------------------------------
 module Main where
 
 import List
@@ -19,6 +13,14 @@ import qualified Text.ParserCombinators.Parsec.Token as P
 import qualified Text.ParserCombinators.Parsec.Language as Language
 import Text.ParserCombinators.Parsec.Expr
 
+license = 
+    "------------------------------------------------------------------------------\n"
+  ++" \"THE BEER-WARE LICENSE\" (Revision 42):                                     \n"
+  ++" <lpeterse@uos.de> wrote this file. As long as you retain this notice you     \n"
+  ++" can do whatever you want with this stuff. If we meet some day, and you think \n"
+  ++" this stuff is worth it, you can buy me a beer in return. Lars Petersen       \n"
+  ++"------------------------------------------------------------------------------\n"
+
 manual =  "\nBeweiser für die Aussagenlogik im CR-Kalkül\n"
         ++"===========================================\n\n"
         ++"Befehle:\n"
@@ -28,12 +30,13 @@ manual =  "\nBeweiser für die Aussagenlogik im CR-Kalkül\n"
         ++"  [expr]   - beweise Aussage\n\n"
         ++"  demo     - zeigt die Beweise einiger ausgewählter Sätze\n"
         ++"  help     - zeigt diese Hilfe\n"
+        ++"  license  - zeigt Lizenz und Autor\n"
         ++"  exit     - beendet das Programm\n\n"
         ++"Syntax:\n"
         ++"  Das Programm unterstützt die Verwendung von Unicodezeichen. Jedoch\n"
         ++"  gibt es für jedes Zeichen auch eine ASCII-Alternative.\n"
         ++"                (ASCII)  (Unicode)\n"
-        ++"  Negation:      !       ¬ (u+\n"
+        ++"  Negation:      !       ¬ \n"
         ++"  Conjunction:   ^       ∧ (u+2227)\n"
         ++"  Disjunction:   v       ∨ (u+2228)\n"
         ++"  Conditional:   ->      ⊃ (u+2283)\n"
@@ -86,6 +89,7 @@ readEvalPrintLoop ps = do
        Just "ls"   -> (addHistory "ls")   >> (putStr $ unlines $ map (encodeString.show) $ map proof2Proposition ps) >> (readEvalPrintLoop ps)
        Just "demo" -> (addHistory "demo") >> demo >> (readEvalPrintLoop ps)
        Just "help" -> (addHistory "help") >> (putUtf8Ln manual) >> (readEvalPrintLoop ps)
+       Just "license" -> (addHistory "license") >> (putUtf8Ln license) >> (readEvalPrintLoop ps)
        Just line -> do addHistory line
                        case line of
                         'A':' ':line' -> case runLex expr (decodeString line') of

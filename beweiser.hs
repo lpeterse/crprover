@@ -100,7 +100,7 @@ readEvalPrintLoop ps = do
                                            Right x  -> readEvalPrintLoop (ps `union` [A x])
                         _             -> case runLex expr (decodeString line) of
                                            Left err -> do{ putStr "parse error at "; print err}
-                                           Right x  -> catch (proove x ps) (const $ readEvalPrintLoop ps) 
+                                           Right x  -> catch (prove x ps) (const $ readEvalPrintLoop ps) 
                        readEvalPrintLoop ps
 
 --einige String-Formatierungsfunktionen
@@ -110,37 +110,36 @@ underline x = x ++ '\n':( map (const '-') x)
 -------------------------------------------------------------------------------------------------------------------------------
 -- Demobeweise. Dies stellt gleichzeitig einen Unit-Test dar. Wenn diese nicht beweisbar sind, stimmt was nicht.
 demo = do
-         proove (If (Const "p") (Const "p")) [] 
+         prove (If (Const "p") (Const "p")) [] 
 --     Teste Reductio Ad Absurdum
-         proove (Neg (Const "p")) [A (If (Const "p") (Neg (Const "q"))), A (Const "q")] 
+         prove (Neg (Const "p")) [A (If (Const "p") (Neg (Const "q"))), A (Const "q")] 
 --     Teste OrElimination
-         proove (Const "p") [A (Neg (Const "q")), A (Or (Const "p") (Const "q"))]
-         proove (Const "p") [A (Neg (Const "q")), A (Or (Const "q") (Const "p"))]
+         prove (Const "p") [A (Neg (Const "q")), A (Or (Const "p") (Const "q"))]
+         prove (Const "p") [A (Neg (Const "q")), A (Or (Const "q") (Const "p"))]
 --     Teste AndIntroduction
-         proove (And (Const "p") (Const "q")) [A (Const "p"), A (Const "q")]
+         prove (And (Const "p") (Const "q")) [A (Const "p"), A (Const "q")]
 --     Teste AndElimination
-         proove (Const "p") [A (And (Const "p") (Const "q"))]
-         proove (Const "q") [A (And (Const "p") (Const "q"))]
-         proove (Const "q") [A (And (And (Const "q") (Const "p")) (Const "r"))]
+         prove (Const "p") [A (And (Const "p") (Const "q"))]
+         prove (Const "q") [A (And (Const "p") (Const "q"))]
+         prove (Const "q") [A (And (And (Const "q") (Const "p")) (Const "r"))]
 --     Kompliziertere Sätze aus dem Skript von Achim Stephan und Sven Walter
-         proove (If (Or (Const "r") (Neg (Const "q"))) (If (Const "p") (Const "r"))) [A (If (Const "p") (Const "q"))]
-         proove (And (And (Const "r1") (Const "r")) (Neg (Const "p1"))) [A (If (Neg (Const "p")) (And (Const "q") (Const "r"))), A (If (Or (Neg (Const "p")) (Const "q1")) (Neg (Const "p1"))), A (And (Const "r1") (Neg (Const "p")))]
-         proove (If (And (Const "p") (Const "q")) (Const "r")) [A (If (Const "p") (If (Const "q") (Const "r")))]
-         proove (If (If (Const "p") (Const "q")) (If (If (Const "p") (Neg (Const "q"))) (Neg (Const "p")))) []
+         prove (If (Or (Const "r") (Neg (Const "q"))) (If (Const "p") (Const "r"))) [A (If (Const "p") (Const "q"))]
+         prove (And (And (Const "r1") (Const "r")) (Neg (Const "p1"))) [A (If (Neg (Const "p")) (And (Const "q") (Const "r"))), A (If (Or (Neg (Const "p")) (Const "q1")) (Neg (Const "p1"))), A (And (Const "r1") (Neg (Const "p")))]
+         prove (If (And (Const "p") (Const "q")) (Const "r")) [A (If (Const "p") (If (Const "q") (Const "r")))]
+         prove (If (If (Const "p") (Const "q")) (If (If (Const "p") (Neg (Const "q"))) (Neg (Const "p")))) []
 
 
 -------------------------------------------------------------------------------------------------------------------------------
 -- Beweisfunktionen: Iterative Vertiefung mit und ohne Begrenzung. Aktion innerhalb der IO-Monade
-proove p as = do putUtf8Ln $ underline ("Beweis von "++(init $ tail $ show (map fromProof as))++" ⊦ "++(show p)++":")
-                 proove'' 7 p as
+prove p as = do putUtf8Ln $ underline ("Beweis von "++(init $ tail $ show (map fromProof as))++" ⊦ "++(show p)++":")
+                prove'' 7 p as
 
-proove'        :: Proposition -> [Proof] -> IO ()
-proove' p as    = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProove' p as
+prove'        :: Proposition -> [Proof] -> IO ()
+prove' p as    = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProve' p as
 
-proove'' 0 p as = putUtf8Ln "Beweis nicht möglich. Aus Sicherheitsgründen ist die Beweistiefe auf diesem System begrenzt.\n"
-proove'' n p as | (idsProove n p as ) == Unprovable = do
-                    proove'' (n-1) p as
-                | otherwise        = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProove n p as
+prove'' 0 p as = putUtf8Ln "Beweis nicht möglich. Aus Sicherheitsgründen ist die Beweistiefe auf diesem System begrenzt.\n"
+prove'' n p as | (idsProve n p as ) == Unprovable = prove'' (n-1) p as
+               | otherwise        = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProve n p as
 
 
 -------------------------------------------------------------------------------------------------------------------------------
@@ -221,8 +220,8 @@ fromProof (RAA      _ _ c) = neg (fromProof c)
 -- einige Typaliase, insbesondere für Funktionen
 type Depth          = Int
 type Assumptions    = [Proof]
-type Proover        = Proposition -> Assumptions -> Proof
-type Transformation = Proposition -> Assumptions -> Proover -> Proof
+type Prover         = Proposition -> Assumptions -> Proof
+type Transformation = Proposition -> Assumptions -> Prover -> Proof
 
 -- Prüft ob linke Seite beweisbar ist und setzt Beweis in rechte Funktion ein.
 -- Wenn nicht beweisbar, breche ab, indem Unprovable zurückgegeben wird.
@@ -231,9 +230,15 @@ type Transformation = Proposition -> Assumptions -> Proover -> Proof
 Unprovable ->> _             = Unprovable
 a          ->> f             = f a
 
+-- p: zu beweisende Aussage
+-- State:    Annahmen, die zulässig sind
+-- Funktion: Funktion, die Aussage unter Berücksichtigung des States beweisen kann
+
+-- StateMonade
+
 -- Liste mit Transformationsfunktionen (siehe unten), die an jedem Knoten des
 -- iterativen Baumes evaluiert werden. Eine Transformationsfunktion liefert einen Beweis
--- zurück (evtl. Unprovable) den es mithilfe des ihr übergebenen Proovers ermittelt hat.
+-- zurück (evtl. Unprovable) den es mithilfe des ihr übergebenen Provers ermittelt hat.
 transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tryFoobar, tryOrInt, tryOrElim1, tryOrElim2, tryAndInt, tryAndElim, tryRAA] 
 
 -- Implementierung einer iterativen Tiefensuche.
@@ -243,16 +248,16 @@ transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tr
 -- Auf diese Weise ist es möglich die Transformationsfunktionen von einer speziellen Art
 -- der Suche zu abstrahieren. Da sie nur eine Beweisfunktion nehmen, könnte man leicht z.B.
 -- auf Breitensuche wechseln.
-idsProove       :: Depth -> Proover
-idsProove 0 _ _  = Unprovable 
-idsProove d p as = fromMaybe Unprovable (find (/=Unprovable) proofs)
+idsProve       :: Depth -> Prover
+idsProve 0 _ _  = Unprovable 
+idsProve d p as = fromMaybe Unprovable (find (/=Unprovable) proofs)
                     where
-                      np     = idsProove (d-1)
+                      np     = idsProve (d-1)
                       proofs = map (\f -> f p as np) transformations
 
 -- Erhöht die Tiefe schrittweise. Wir finden so meist den kürzestmöglichen Beweis,
 -- da unsere Suche vollständig ist.
-idsProove' p as         = fromMaybe Unprovable $ find (/=Unprovable) [idsProove d p as | d <- [1..30]]
+idsProve' p as         = fromMaybe Unprovable $ find (/=Unprovable) [idsProve d p as | d <- [1..30]]
 
 -------------------------------------------------------------------------------
 -- Teste, ob zu beweisender Satz im Set of Assumptions steht.

@@ -4,11 +4,13 @@ import List
 import Maybe
 import Codec.Binary.UTF8.String 
 import Data.Char
+import Control.Monad.State
+import Control.Monad.Maybe
 
 import System.Console.Readline
 import System.Exit
 
-import Text.ParserCombinators.Parsec hiding (Line)
+import Text.ParserCombinators.Parsec hiding (Line, State)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import qualified Text.ParserCombinators.Parsec.Language as Language
 import Text.ParserCombinators.Parsec.Expr
@@ -138,7 +140,7 @@ prove'        :: Proposition -> [Proof] -> IO ()
 prove' p as    = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProve' p as
 
 prove'' 0 p as = putUtf8Ln "Beweis nicht möglich. Aus Sicherheitsgründen ist die Beweistiefe auf diesem System begrenzt.\n"
-prove'' n p as | (idsProve n p as ) == Unprovable = prove'' (n-1) p as
+prove'' n p as | (idsProve n p as ) == (A (Const "p")) = prove'' (n-1) p as
                | otherwise        = putUtf8Ln $ unlines $ map show $ proof2Lines $ idsProve n p as
 
 
@@ -181,8 +183,8 @@ instance Show Proposition where
 -- wie unschwer zu erkennen, ein Baum. Der Datentyp macht keine expliziten
 -- Angaben über die Annahmen, von denen das Ergebnis abhängig ist. Dies
 -- bedarf einer externen Interpretation.
-data Proof        = Unprovable
-                  | A        Proposition
+data Proof        = --Unprovable
+                    A        Proposition
                   | IfInt    Proof       Proof 
                   | IfElim   Proof       Proof
                   | IffInt   Proof       Proof
@@ -201,7 +203,7 @@ data Proof        = Unprovable
 -- Wandelt einen Beweis wieder in eine Aussage um. Es geht hierbei natürlich
 -- Information verloren darüber, wie diese Aussage entstanden ist.
 fromProof                 :: Proof -> Proposition
-fromProof Unprovable       = Const "Unprovable"
+--fromProof Unprovable       = Const "Unprovable"
 fromProof (A        a)     = a
 fromProof (IfInt    a b)   = If (fromProof a) (fromProof b)
 fromProof (IfElim   _ b)   = consequence (fromProof b)
@@ -217,30 +219,50 @@ fromProof (AndElim1 a)     = fstConj (fromProof a)
 fromProof (AndElim2 a)     = sndConj (fromProof a)
 fromProof (RAA      _ _ c) = neg (fromProof c)
 
--- einige Typaliase, insbesondere für Funktionen
-type Depth          = Int
-type Assumptions    = [Proof]
-type Prover         = Proposition -> Assumptions -> Proof
-type Transformation = Proposition -> Assumptions -> Prover -> Proof
+---------------------------------------------------------------------------
+type Assumptions      = [Proof]
+data Strategy         = LimitedDeepening { depth :: Int }
+type AssumptionsT m a = StateT Assumptions m a
+type StrategyT    m   = StateT Strategy    m 
+type SearchM        a = AssumptionsT (StrategyT Maybe) a 
+type Prover           = SearchM Proof
+type Deducer          = Prover
 
--- Prüft ob linke Seite beweisbar ist und setzt Beweis in rechte Funktion ein.
--- Wenn nicht beweisbar, breche ab, indem Unprovable zurückgegeben wird.
--- Rechte Funktion kann auch Konstruktorfunktion sein, das sollte nicht verwirren ;-)
-(->>)                       :: Proof -> (Proof -> Proof) -> Proof
-Unprovable ->> _             = Unprovable
-a          ->> f             = f a
+getAssumptions    :: SearchM Assumptions 
+getAssumptions     = get
+putAssumptions    :: Assumptions -> SearchM () 
+putAssumptions     = put
+modAssumptions    :: (Assumptions -> Assumptions) -> SearchM ()
+modAssumptions f   = do a <- getAssumptions
+                        putAssumptions (f a)
 
--- p: zu beweisende Aussage
--- State:    Annahmen, die zulässig sind
--- Funktion: Funktion, die Aussage unter Berücksichtigung des States beweisen kann
+getStrategy       :: SearchM Strategy
+getStrategy        = lift get 
+putStrategy       :: Strategy -> SearchM ()
+putStrategy        = lift . put 
 
--- StateMonade
+decDepth          :: SearchM ()
+decDepth           = do s <- getStrategy  
+                        let n = depth s
+                        if n==0 
+                          then fail "depth-limit reached" 
+                          else putStrategy (LimitedDeepening (n-1))
+                        
+
+liftMaybe         :: Maybe Proof -> Prover
+liftMaybe          = lift . lift
+
+runProver         :: Prover -> Assumptions -> Strategy -> Maybe Proof
+runProver m as ps  = evalStateT (evalStateT m as) ps
+
+test = runProver (deduce (If (Const "q") (Const "q"))) [A (Const "q")] (LimitedDeepening 10)
 
 -- Liste mit Transformationsfunktionen (siehe unten), die an jedem Knoten des
 -- iterativen Baumes evaluiert werden. Eine Transformationsfunktion liefert einen Beweis
 -- zurück (evtl. Unprovable) den es mithilfe des ihr übergebenen Provers ermittelt hat.
-transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tryFoobar, tryOrInt, tryOrElim1, tryOrElim2, tryAndInt, tryAndElim, tryRAA] 
-
+--transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tryFoobar, tryOrInt, tryOrElim1, tryOrElim2, tryAndInt, tryAndElim, tryRAA] 
+idsProve = undefined
+idsProve'= undefined
 -- Implementierung einer iterativen Tiefensuche.
 -- Die Funktion ruft alle Transformationsfunktionen mit dem zu beweisenden Ausdruck auf.
 -- Außerem wird den Transformationsfunktionen als Beweisfunktion die Funktion selbst übergeben,
@@ -248,24 +270,47 @@ transformations = [tryAssumption, tryIfInt, tryIfElim, tryIffInt, tryIffElim, tr
 -- Auf diese Weise ist es möglich die Transformationsfunktionen von einer speziellen Art
 -- der Suche zu abstrahieren. Da sie nur eine Beweisfunktion nehmen, könnte man leicht z.B.
 -- auf Breitensuche wechseln.
-idsProve       :: Depth -> Prover
-idsProve 0 _ _  = Unprovable 
-idsProve d p as = fromMaybe Unprovable (find (/=Unprovable) proofs)
-                    where
-                      np     = idsProve (d-1)
-                      proofs = map (\f -> f p as np) transformations
+--idsProve       :: Depth -> Prover
+--idsProve 0 _ _  = Unprovable 
+--idsProve d p as = fromMaybe Unprovable (find (/=Unprovable) proofs)
+--                    where
+--                      np     = idsProve (d-1)
+--                      proofs = map (\f -> f p as np) transformations
 
 -- Erhöht die Tiefe schrittweise. Wir finden so meist den kürzestmöglichen Beweis,
 -- da unsere Suche vollständig ist.
-idsProve' p as         = fromMaybe Unprovable $ find (/=Unprovable) [idsProve d p as | d <- [1..30]]
+--idsProve' p as         = fromMaybe Unprovable $ find (/=Unprovable) [idsProve d p as | d <- [1..30]]
 
 -------------------------------------------------------------------------------
+provers  = [assume, splitImplication]
+deducers = [splitImplications]
+
+deduce  :: Proposition -> Prover
+deduce p = do decDepth 
+              let ls = map (\f->f p) provers
+              strat <- getStrategy
+              as    <- getAssumptions
+              liftMaybe $ listToMaybe $ mapMaybe (\m->runProver m as strat) ls
+           
+
 -- Teste, ob zu beweisender Satz im Set of Assumptions steht.
 -- Hier wird die Rekursion beendet und ein Teilzweig gilt eventuell als bewiesen.
-tryAssumption              :: Transformation
-tryAssumption p    as _     = fromMaybe Unprovable $ find ((==p).fromProof) as
+assume  :: Proposition -> Prover  
+assume p = do as <- getAssumptions 
+              liftMaybe $ find ((==p).fromProof) as
+           
+-- Versuche Implikationen aufzulösen.
+splitImplication         :: Proposition -> Prover
+splitImplication (If p q) = do modAssumptions (`union` [A p]) 
+                               x <- deduce q
+                               return (IfInt (A p) x)
+splitImplication _        = fail "Proposition is not an implication."
 
--- Teste, ob Aussage durch Konditionalisierung entstanden sein kann.
+splitImplications        :: Deducer
+splitImplications         = undefined
+
+
+{-
 tryIfInt                   :: Transformation
 tryIfInt  (If p q) as pr    = pr q as' ->> \x-> IfInt (A p) x 
                               where
@@ -345,7 +390,7 @@ tryRAA    p        as pr    | null ks   = Unprovable
                               where
                                 as' = as `union` [A (Neg p)]
                                 ks  = filter ((/=Unprovable).(\x-> pr (Neg x) as').fromProof) as'
-
+-}
 -------------------------------------------------------------------------------
 
 -- Datentyp, der eine Beweiszeile in Cr-Darstellung repräsentiert.
@@ -379,7 +424,7 @@ mapIntInLine f l = l { soa = (map f (soa l)), index = f (index l), dfl = (map f 
 
 -- Legt fest, wie die angewendete Regel im Beweis dargestellt werden soll.
 lastStep             :: Proof -> String
-lastStep (Unprovable) = ""
+--lastStep (Unprovable) = ""
 lastStep (A _)        = "A"
 lastStep (IfInt  _ _) = "⊃-Int" 
 lastStep (IfElim _ _) = "⊃-Elim" 
@@ -407,7 +452,7 @@ proof2Lines                     = zipGaps . consolid . lineifyProof 1
 -- Bei IfInt und RAA, darf im Assumptionset der Zeilenindex einer Zeile weggelasssen werden.
 -- Dies war nicht ganz einfach umzusetzen und verunstaltet außerdem die Mengen (siehe `freed`).
 lineifyProof                   :: Int -> Proof -> [Line]
-lineifyProof n p@(Unprovable)   = [Line [] n (A (Const "Kein Beweis gefunden.")) []]
+--lineifyProof n p@(Unprovable)   = [Line [] n (A (Const "Kein Beweis gefunden.")) []]
 lineifyProof n p@(A _)          = [Line [n] n p []]
 lineifyProof n p@(IfInt a b)    = as++bs++[Line set (n+las+lbs) p [(n+las+lbs-1), (n+las-1)]] 
                                   where

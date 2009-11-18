@@ -1,0 +1,28 @@
+module Manual where
+
+manual =  "\nBeweiser für die Aussagenlogik im CR-Kalkül\n"
+        ++"===========================================\n\n"
+        ++"Befehle:\n"
+        ++"  ls       - listet den Annahmenspeicher\n"
+        ++"  clear    - leert den Annahmenspeicher\n"
+        ++"  A [expr] - fügt dem Annahmenspeicher eine weitere Aussage hinzu\n"
+        ++"  [expr]   - beweise Aussage\n\n"
+        ++"  demo     - zeigt die Beweise einiger ausgewählter Sätze\n"
+        ++"  help     - zeigt diese Hilfe\n"
+        ++"  license  - zeigt Lizenz und Autor\n"
+        ++"  exit     - beendet das Programm\n\n"
+        ++"Syntax:\n"
+        ++"  Das Programm unterstützt die Verwendung von Unicodezeichen. Jedoch\n"
+        ++"  gibt es für jedes Zeichen auch eine ASCII-Alternative.\n"
+        ++"                (ASCII)  (Unicode)\n"
+        ++"  Negation:      !       ¬ \n"
+        ++"  Conjunction:   ^       ∧ (u+2227)\n"
+        ++"  Disjunction:   v       ∨ (u+2228)\n"
+        ++"  Conditional:   ->      ⊃ (u+2283)\n"
+        ++"  Biconditional: <->     ≣ (u+2263)\n\n"
+        ++"  Die Operatoren sind nach Bindungsstärke geordnet. Die Verwendung von\n"
+        ++"  Klammern ist zulässig. Die Operatoren sind darüber hinaus nicht assoziativ.\n\n"
+        ++"Sonstiges:\n"
+        ++"  Fragen und Verbesserungsvorschläge bitte an info@lars-petersen.net.\n"
+
+

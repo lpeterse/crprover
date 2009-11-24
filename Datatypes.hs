@@ -29,7 +29,7 @@ instance Show Proposition where
   show (And x y) = "(" ++ (show x) ++ " ∧ "   ++ (show y) ++ ")"
   show (Or  x y) = "(" ++ (show x) ++ " ∨ "   ++ (show y) ++ ")"
   show (If  x y) = "(" ++ (show x) ++ " ⊃ "  ++ (show y) ++ ")"
-  show (Iff x y) = "(" ++ (show x) ++ " ≣ " ++ (show y) ++ ")"
+  show (Iff x y) = "(" ++ (show x) ++ " ≡ " ++ (show y) ++ ")"
   show (Neg x)   = "¬" ++ (show x)
 
 -- Datentyp, mit dem ein Beweis dargestellt werden kann. Ein Beweis ist,

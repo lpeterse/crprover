@@ -58,7 +58,6 @@ type Assumptions = [Proof]
 -- Wandelt einen Beweis wieder in eine Aussage um. Es geht hierbei natürlich
 -- Information verloren darüber, wie diese Aussage entstanden ist.
 fromProof                 :: Proof -> Proposition
---fromProof Unprovable       = Const "Unprovable"
 fromProof (A        a)     = a
 fromProof (IfInt    a b)   = If (fromProof a) (fromProof b)
 fromProof (IfElim   _ b)   = consequence (fromProof b)

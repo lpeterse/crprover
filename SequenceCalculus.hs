@@ -51,6 +51,7 @@ lastStep (OrInt2 _ _) = "∨-Int"
 lastStep (OrElim1 _ _)= "∨-Elim" 
 lastStep (OrElim2 _ _)= "∨-Elim" 
 lastStep (RAA _ _ _)  = "RAA"
+lastStep (DNElim _)   = "DN"
 
 -- bildet einen baumartigen `Proof` auf eine Liste von `Line` ab.
 -- Hierbei werden auch gleich noch, Anpassungen der Zahlen vorgenommen
@@ -149,6 +150,11 @@ lineifyProof n p@(RAA a b c)    = as++bs++cs++[Line set (n+las+lbs+lcs) p [(n+la
                                     lcs = length cs
                                     set = (soa (last as) `union` soa (last bs)) \\ freed 
                                     freed = map index (filter ((== proof (head cs)).proof) (as++bs))
+
+lineifyProof n p@(DNElim a)     = as++[Line (soa (last as)) (n+las) p [n+las-1]]
+                                  where
+                                    as  = lineifyProof n a
+                                    las = length as
 
 -- Konsolidierung meint hier: Wir suchen gleiche Zeilen, die Annahmen sind, 
 -- löschen alle doppelten und müssen dann natürlich die Referenzen in den 

@@ -9,6 +9,11 @@ data Proposition = Const { constant:: String }                                  
                  | Neg   { neg     :: Proposition }                             -- Negation
                    deriving (Eq) -- Vergleich bezieht sich auf Syntax
 
+negated  :: Proposition -> Proposition
+negated (Neg (Neg p)) = negated p
+negated (Neg p)       = p
+negated p             = Neg p
+
 -- Funktionen zum Testen auf die verschiedenen Konstruktoren
 isConst (Const _) = True
 isConst _         = False
@@ -51,6 +56,7 @@ data Proof        = --Unprovable
                   | AndElim1 Proof  
                   | AndElim2 Proof 
                   | RAA      Proof       Proof       Proof
+                  | DNElim   Proof
                   deriving (Eq, Show)
 
 type Assumptions = [Proof]
@@ -71,6 +77,8 @@ fromProof (OrElim2  a _)   = sndDisj (fromProof a)
 fromProof (AndInt   a b)   = And (fromProof a) (fromProof b)
 fromProof (AndElim1 a)     = fstConj (fromProof a)
 fromProof (AndElim2 a)     = sndConj (fromProof a)
-fromProof (RAA      _ _ c) = neg (fromProof c)
-
+fromProof (RAA      _ _ c) = case fromProof c of
+                               Neg p -> p
+                               p     -> Neg p
+fromProof (DNElim   a)     = neg (neg (fromProof a))
 

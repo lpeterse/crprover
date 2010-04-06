@@ -8,7 +8,7 @@ import Data.Function.Predicate
 
 import Datatypes
 
-data Strategy         = LimitedDepth { depth :: Int }
+data Strategy         = LimitedDepth { depth :: Int } deriving Show
 type AssumptionsT m a = StateT Assumptions m a
 type StrategyT    m   = StateT Strategy    m 
 type SearchM        a = AssumptionsT (StrategyT Maybe) a 
@@ -22,6 +22,8 @@ putAssumptions     = put
 modAssumptions    :: (Assumptions -> Assumptions) -> SearchM ()
 modAssumptions f   = do a <- getAssumptions
                         putAssumptions (f a)
+addAssumption a    = modAssumptions (a:)
+addAssumptions as  = mapM_ addAssumption as
 
 getStrategy       :: SearchM Strategy
 getStrategy        = lift get 
@@ -39,12 +41,21 @@ decDepth           = do s <- getStrategy
 liftMaybe         :: Maybe Proof -> Prover
 liftMaybe          = lift . lift
 
-runProver         :: Prover -> Assumptions -> Strategy -> Maybe Proof
-runProver m as ps  = evalStateT (evalStateT m as) ps
+evalProver         :: Prover -> Assumptions -> Strategy -> Maybe Proof
+evalProver m as ps  = evalStateT (evalStateT m as) ps
+
+runProver          :: Prover -> Assumptions -> Strategy -> Maybe ((Proof, Assumptions), Strategy)
+runProver m as ps   = runStateT (runStateT m as) ps
 
 -- Beweisfunktionen: Iterative Vertiefung mit und ohne Begrenzung. Aktion innerhalb der IO-Monade
 prove             :: Proposition -> Assumptions -> Maybe Proof
-prove p as         = runProver (deduce p) as (LimitedDepth 4)
+prove p as         = prove' 1
+                     where
+                       prove' 6 = Nothing
+                       prove' n = case evalProver (deduce p) as (LimitedDepth n) of
+                                    Nothing -> prove' (n+1)
+                                    Just p  -> Just p
+
 
 -------------------------------------------------------------------------------
 
@@ -54,21 +65,35 @@ deduce p = do decDepth
               strat <- getStrategy
               as    <- getAssumptions
               let ls = map (\f->f p) provers
-              liftMaybe $ listToMaybe $ mapMaybe (\m->runProver m as strat) ls
+              liftMaybe $ listToMaybe $ mapMaybe (\m->evalProver m as strat) ls
 
 try     :: Prover -> Prover -> Prover 
 try m n  = do as <- getAssumptions
               st <- getStrategy
-              if isJust $ runProver m as st then m else n
- 
-provers  = [assume, split]
-deducers = [splitImplications]
+              case runProver m as st of
+                Just ((p, as), st) -> putAssumptions as >> putStrategy st >> return p
+                _                  -> n
+
+provers  = [assume, split, absurdum]
+deducers = [splitImplications, splitConjuncts, splitDisjuncts, splitBiconditionals]
 
 assume  :: Proposition -> Prover  
 assume p = do as <- getAssumptions 
               liftMaybe $ find ((==p).fromProof) as
-           
+
+absurdum  :: Proposition -> Prover
+absurdum p = do addAssumption (A $ negated p)
+                as <- getAssumptions
+                let ps  = map (deduce . negated . fromProof) as
+                a <- foldl try (fail "") ps
+                b <- liftMaybe $ find (opposite a) as
+                return (RAA a b (A $ negated p))
+              where
+                opposite a b = fromProof a == negated (fromProof b)
+
 split          :: Proposition -> Prover
+
+split p@(Const _) = deduce p
 
 split (If p q)  = do modAssumptions (`union` [A p]) 
                      x <- deduce q
@@ -90,16 +115,42 @@ split (Or p q)  = try (
                           return (OrInt2 x (A p))
                       )
 
+split (Neg (Neg (p))) = deduce p
+split (Neg p)         = deduce (Neg p)
+
+
 splitImplications        :: Deducer
 splitImplications         = do as <- getAssumptions
-                               let as'=[IfElim y z|z<-as, let If p q = fromProof z, let Just y = find (fromProof `equals` p) as] 
-                               modAssumptions (`union` as')
+                               addAssumptions [IfElim y z|z<-as, isIf (fromProof z), let If p q = fromProof z, y<-as, p==(fromProof y)]
 
 splitConjuncts           :: Deducer
 splitConjuncts            = do as <- getAssumptions
-                               let as'=concat[[AndElim1 z, AndElim2 z]|z<-as, let And p q = fromProof z]
-                               modAssumptions (`union` as')
+                               addAssumptions $ concat [[AndElim1 z, AndElim2 z]|z<-as, isAnd(fromProof z)]
 
---splitDisjuncts           :: Deducer
---splitDisjuncts            = do as <- getAssumptions
---                               let as'=concat[   |z<-as, let Or p q = fromProof z, 
+splitDisjuncts           :: Deducer
+splitDisjuncts            = do as <- getAssumptions
+                               let ors = filter (isOr.fromProof) as
+                               mapM_ orElimination ors
+
+try'                     :: Prover -> (Proof -> Deducer) -> Deducer
+try' m d                  = do as <- getAssumptions
+                               st <- getStrategy
+                               case evalProver m as st of
+                                 Just pr -> d pr
+                                 Nothing -> return ()
+
+orElimination            :: Proof -> Deducer
+orElimination a           = do let Or p q = fromProof a
+                               try' (deduce (negated p)) (\b-> addAssumption (OrElim2 a b))
+                               try' (deduce (negated q)) (\b-> addAssumption (OrElim2 a b))
+
+splitBiconditionals      :: Deducer
+splitBiconditionals       = do as <- getAssumptions
+                               addAssumptions $ concat [[IffElim1 z, IffElim2 z]|z<-as, isIff (fromProof z)]
+
+deleteDN                 :: Deducer
+deleteDN                  = modAssumptions $ map f
+                            where
+                              f x = case fromProof x of
+                                      Neg (Neg _) -> DNElim x
+                                      _           -> x
